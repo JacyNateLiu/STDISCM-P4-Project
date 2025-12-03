@@ -1,21 +1,23 @@
-"""Utility script that simulates a CNN training loop and streams data to the dashboard."""
+"""Utility script that trains a CNN on chess pieces and streams data to the dashboard."""
 
 from __future__ import annotations
 
 import asyncio
 import base64
 import io
-import math
 import os
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Sequence
 
 import httpx
 import grpc
 import numpy as np
 from PIL import Image, ImageOps
+import torch
+from torch import nn
+from torch.utils.data import DataLoader, Dataset
 
 from server.proto import dashboard_pb2, dashboard_pb2_grpc
 
@@ -26,6 +28,10 @@ TOTAL_ITERATIONS = int(os.getenv("TOTAL_ITERATIONS", "400"))
 MINI_BATCH_MIN = int(os.getenv("MINI_BATCH_MIN", "6"))
 MINI_BATCH_MAX = int(os.getenv("MINI_BATCH_MAX", "32"))
 DELAY_MS = int(os.getenv("INJECT_DELAY_MS", "0"))
+LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-3"))
+STREAM_TILE_LIMIT = int(os.getenv("STREAM_TILE_LIMIT", "16"))
+DEFAULT_BATCH_SIZE = max(MINI_BATCH_MIN, MINI_BATCH_MAX)
+TRAIN_BATCH_SIZE = int(os.getenv("TRAIN_BATCH_SIZE", str(DEFAULT_BATCH_SIZE)))
 CLASSES = [
     "Bishop",
     "King",
@@ -36,10 +42,7 @@ CLASSES = [
 ]
 
 DATASET_ROOT = Path(__file__).parent / "assets"
-LABEL_INDEX = {
-    label: list((DATASET_ROOT / label).glob("*.*"))
-    for label in CLASSES
-}
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".jfif", ".tif", ".tiff"}
 
 
 @dataclass
@@ -50,14 +53,6 @@ class Sample:
     image_b64: str
 
 
-def generate_image(side: int = 64) -> Image.Image:
-    noise = np.random.randint(0, 255, (side, side, 3), dtype=np.uint8)
-    image = Image.fromarray(noise, mode="RGB")
-    if side < 64:
-        image = image.resize((side * 2, side * 2), Image.NEAREST)
-    return image
-
-
 def image_to_base64(image: Image.Image) -> str:
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
@@ -65,43 +60,156 @@ def image_to_base64(image: Image.Image) -> str:
     return payload
 
 
-def load_real_image(label: str) -> Image.Image:
-    choices = LABEL_INDEX.get(label)
-    if not choices:
-        raise RuntimeError(f"No images available for {label}")
-    image = Image.open(random.choice(choices)).convert("RGB")
-    image = ImageOps.fit(image, (128, 128))
-    if random.random() < 0.5:
-        image = ImageOps.mirror(image)
-    return image
+def pil_to_tensor(image: Image.Image) -> torch.Tensor:
+    array = np.asarray(image, dtype=np.float32) / 255.0
+    array = np.transpose(array, (2, 0, 1))  # CHW
+    return torch.from_numpy(array)
 
 
-def build_sample() -> Sample:
-    gt = random.choice(CLASSES)
-    predicted = random.choice(CLASSES)
-    confidence = max(0.05, random.random())
-    image = load_real_image(gt)
-    return Sample(
-        prediction=predicted,
-        ground_truth=gt,
-        confidence=confidence,
-        image_b64=image_to_base64(image),
-    )
+class ChessPieceDataset(Dataset):
+    def __init__(self, root: Path, classes: Sequence[str], image_size: int = 128) -> None:
+        self.root = root
+        self.classes = classes
+        self.image_size = image_size
+        self.samples: List[tuple[Path, int]] = []
+        for idx, label in enumerate(classes):
+            folder = root / label
+            if not folder.exists():
+                continue
+            for path in folder.glob("*.*"):
+                if path.suffix.lower() in ALLOWED_EXTENSIONS:
+                    self.samples.append((path, idx))
+        if not self.samples:
+            raise RuntimeError(
+                f"No dataset found under {root}. Make sure the chess assets are available."
+            )
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, index: int):
+        path, label_idx = self.samples[index]
+        image = Image.open(path).convert("RGB")
+        image = ImageOps.fit(image, (self.image_size, self.image_size))
+        if random.random() < 0.5:
+            image = ImageOps.mirror(image)
+        tensor = pil_to_tensor(image)
+        return tensor, label_idx, image
 
 
-def compute_loss(iteration: int) -> float:
-    baseline = math.exp(-iteration / 250) * 2.0
-    noise = random.uniform(-0.05, 0.05)
-    return max(0.01, baseline + noise)
+def collate_batch(batch):
+    tensors, labels, images = zip(*batch)
+    stacked = torch.stack(list(tensors))
+    label_tensor = torch.tensor(labels, dtype=torch.long)
+    return stacked, label_tensor, list(images)
+
+
+class SimpleCNN(nn.Module):
+    def __init__(self, num_classes: int) -> None:
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+        )
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128 * 16 * 16, 256),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, num_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.classifier(self.features(x))
+
+
+class ChessTrainer:
+    def __init__(self) -> None:
+        batch_size = max(1, TRAIN_BATCH_SIZE)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.dataset = ChessPieceDataset(DATASET_ROOT, CLASSES)
+        self.loader = DataLoader(
+            self.dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            collate_fn=collate_batch,
+            num_workers=0,
+            drop_last=False,
+        )
+        self.iterator = iter(self.loader)
+        self.model = SimpleCNN(len(CLASSES)).to(self.device)
+        self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LEARNING_RATE)
+
+    def _next_batch(self):
+        try:
+            return next(self.iterator)
+        except StopIteration:
+            self.iterator = iter(self.loader)
+            return next(self.iterator)
+
+    def train_iteration(self):
+        inputs, labels, images = self._next_batch()
+        inputs = inputs.to(self.device)
+        labels = labels.to(self.device)
+        self.model.train()
+        logits = self.model(inputs)
+        loss = self.criterion(logits, labels)
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 5.0)
+        self.optimizer.step()
+        self.optimizer.zero_grad(set_to_none=True)
+        probs = torch.softmax(logits.detach().cpu(), dim=1)
+        preds = probs.argmax(dim=1)
+        confidences = probs.max(dim=1).values
+        return loss.item(), labels.cpu(), preds, confidences, images
+
+
+def build_samples(
+    labels: torch.Tensor,
+    preds: torch.Tensor,
+    confidences: torch.Tensor,
+    images: Sequence[Image.Image],
+) -> List[Sample]:
+    total = len(images)
+    indices = list(range(total))
+    random.shuffle(indices)
+    limit = min(STREAM_TILE_LIMIT, total)
+    selected = indices[:limit]
+    samples: List[Sample] = []
+    for idx in selected:
+        label_idx = int(labels[idx])
+        pred_idx = int(preds[idx])
+        confidence = float(confidences[idx])
+        image = images[idx]
+        samples.append(
+            Sample(
+                prediction=CLASSES[pred_idx],
+                ground_truth=CLASSES[label_idx],
+                confidence=confidence,
+                image_b64=image_to_base64(image),
+            )
+        )
+    return samples
 
 
 async def generate_batches():
+    trainer = ChessTrainer()
     for iteration in range(1, TOTAL_ITERATIONS + 1):
-        batch_size = random.randint(MINI_BATCH_MIN, MINI_BATCH_MAX)
-        samples = [build_sample() for _ in range(batch_size)]
-        loss_value = compute_loss(iteration)
-        yield iteration, batch_size, loss_value, samples
-        await asyncio.sleep(0.2)
+        loss_value, labels, preds, confidences, images = trainer.train_iteration()
+        samples = build_samples(labels, preds, confidences, images)
+        yield iteration, len(images), loss_value, samples
+        await asyncio.sleep(0)
 
 
 async def stream_batches_http() -> None:
