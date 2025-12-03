@@ -9,12 +9,13 @@ import math
 import os
 import random
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List
 
 import httpx
 import grpc
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 from server.proto import dashboard_pb2, dashboard_pb2_grpc
 
@@ -26,17 +27,19 @@ MINI_BATCH_MIN = int(os.getenv("MINI_BATCH_MIN", "6"))
 MINI_BATCH_MAX = int(os.getenv("MINI_BATCH_MAX", "32"))
 DELAY_MS = int(os.getenv("INJECT_DELAY_MS", "0"))
 CLASSES = [
-    "airplane",
-    "automobile",
-    "bird",
-    "cat",
-    "deer",
-    "dog",
-    "frog",
-    "horse",
-    "ship",
-    "truck",
+    "Bishop",
+    "King",
+    "Knight",
+    "Pawn",
+    "Queen",
+    "Rook",
 ]
+
+DATASET_ROOT = Path("../assets")  # adjust if you run from project root
+LABEL_INDEX = {
+    label: list((DATASET_ROOT / label).glob("*.*"))
+    for label in CLASSES
+}
 
 
 @dataclass
@@ -62,12 +65,22 @@ def image_to_base64(image: Image.Image) -> str:
     return payload
 
 
+def load_real_image(label: str) -> Image.Image:
+    choices = LABEL_INDEX.get(label)
+    if not choices:
+        raise RuntimeError(f"No images available for {label}")
+    image = Image.open(random.choice(choices)).convert("RGB")
+    image = ImageOps.fit(image, (128, 128))
+    if random.random() < 0.5:
+        image = ImageOps.mirror(image)
+    return image
+
+
 def build_sample() -> Sample:
     gt = random.choice(CLASSES)
     predicted = random.choice(CLASSES)
     confidence = max(0.05, random.random())
-    image_side = random.choice([32, 64, 96, 128, 224])
-    image = generate_image(image_side)
+    image = load_real_image(gt)
     return Sample(
         prediction=predicted,
         ground_truth=gt,
