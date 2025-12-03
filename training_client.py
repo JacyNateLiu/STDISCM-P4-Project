@@ -89,12 +89,16 @@ class ChessPieceDataset(Dataset):
 
     def __getitem__(self, index: int):
         path, label_idx = self.samples[index]
-        image = Image.open(path).convert("RGB")
-        image = ImageOps.fit(image, (self.image_size, self.image_size))
+        base_image = Image.open(path).convert("RGB")
+
+        # Preserve the original framing for display while still creating a square crop for training.
+        display_image = ImageOps.contain(base_image.copy(), (self.image_size, self.image_size))
+        training_image = ImageOps.fit(base_image, (self.image_size, self.image_size))
         if random.random() < 0.5:
-            image = ImageOps.mirror(image)
-        tensor = pil_to_tensor(image)
-        return tensor, label_idx, image
+            training_image = ImageOps.mirror(training_image)
+
+        tensor = pil_to_tensor(training_image)
+        return tensor, label_idx, display_image
 
 
 def collate_batch(batch):
