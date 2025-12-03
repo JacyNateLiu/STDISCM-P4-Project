@@ -35,7 +35,7 @@ CLASSES = [
     "Rook",
 ]
 
-DATASET_ROOT = Path("../assets")  # adjust if you run from project root
+DATASET_ROOT = Path(__file__).parent / "assets"
 LABEL_INDEX = {
     label: list((DATASET_ROOT / label).glob("*.*"))
     for label in CLASSES

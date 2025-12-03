@@ -34,3 +34,5 @@ All commands below assume your terminal is opened in this folder (the project ro
    cd dashboard
    python training_client.py
    ```
+
+The trainer now streams real chess-piece tiles that live under `assets/` (already included in this repo). Feel free to drop additional PNG/JPG samples into `assets/<PieceName>/` to customize the dataset.
