@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Training Dashboard</title>
+    <link rel="stylesheet" href="/dashboard/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>Training Visualizer</h1>
+        <p class="subtitle">Real-time batch view with RPC ingestion</p>
+      </div>
+      <div class="metrics">
+        <div class="metric">
+          <span class="label">FPS</span>
+          <span id="fpsCounter">0</span>
+        </div>
+        <div class="metric">
+          <span class="label">Iteration</span>
+          <span id="iteration">-</span>
+        </div>
+        <div class="metric">
+          <span class="label">Loss</span>
+          <span id="loss">-</span>
+        </div>
+        <div class="metric">
+          <span class="label">Batch</span>
+          <span id="batchSize">-</span>
+        </div>
+        <div class="metric">
+          <span class="label">Tiles</span>
+          <span id="tileStatus">waiting…</span>
+        </div>
+      </div>
+      <div class="controls">
+        <button id="pauseBtn">Pause</button>
+        <button id="resumeBtn" disabled>Resume</button>
+        <span id="connectionBadge" class="badge">Connecting…</span>
+      </div>
+    </header>
+
+    <main>
+      <section>
+        <h2>Input Batch (16 tiles)</h2>
+        <div id="imageGrid" class="grid"></div>
+      </section>
+
+      <section>
+        <h2>Prediction vs Ground Truth</h2>
+        <div id="predictionGrid" class="grid"></div>
+      </section>
+
+      <section class="chart-section">
+        <div class="chart-header">
+          <h2>Training Loss</h2>
+          <span id="lossPointsCount" class="muted"></span>
+        </div>
+        <canvas id="lossChart" height="120"></canvas>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Inspired by Visdom · RPC endpoint: <code>POST /rpc/batch_update</code> ·
+        WebSocket stream: <code>/ws</code>
+      </p>
+    </footer>
+
+    <script src="/dashboard/main.js" type="module"></script>
+  </body>
+</html>

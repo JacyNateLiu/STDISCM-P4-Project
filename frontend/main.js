@@ -1,0 +1,224 @@
+const REQUIRED_TILES = 16;
+const imageGrid = document.getElementById("imageGrid");
+const predictionGrid = document.getElementById("predictionGrid");
+const lossEl = document.getElementById("loss");
+const iterEl = document.getElementById("iteration");
+const batchEl = document.getElementById("batchSize");
+const tileStatusEl = document.getElementById("tileStatus");
+const fpsEl = document.getElementById("fpsCounter");
+const badgeEl = document.getElementById("connectionBadge");
+const lossPointsEl = document.getElementById("lossPointsCount");
+const pauseBtn = document.getElementById("pauseBtn");
+const resumeBtn = document.getElementById("resumeBtn");
+
+const tileImages = [];
+const labelTiles = [];
+
+function buildTiles() {
+  for (let i = 0; i < REQUIRED_TILES; i += 1) {
+    const imgTile = document.createElement("div");
+    imgTile.className = "tile";
+    const img = document.createElement("img");
+    img.src = "";
+    img.alt = `tile-${i}`;
+    imgTile.appendChild(img);
+    imageGrid.appendChild(imgTile);
+    tileImages.push(img);
+
+    const labelTile = document.createElement("div");
+    labelTile.className = "tile";
+    const caption = document.createElement("div");
+    caption.className = "caption";
+    caption.textContent = "Waiting…";
+    labelTile.appendChild(caption);
+    predictionGrid.appendChild(labelTile);
+    labelTiles.push(caption);
+  }
+}
+
+buildTiles();
+
+const ctx = document.getElementById("lossChart").getContext("2d");
+const lossChart = new Chart(ctx, {
+  type: "line",
+  data: {
+    labels: [],
+    datasets: [
+      {
+        label: "Loss",
+        data: [],
+        borderColor: "#4ad7b5",
+        tension: 0.2,
+        pointRadius: 0,
+        borderWidth: 2,
+      },
+    ],
+  },
+  options: {
+    animation: false,
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        enabled: true,
+        callbacks: {
+          label: (context) => `Loss: ${context.parsed.y.toFixed(4)}`,
+        },
+      },
+    },
+    scales: {
+      x: {
+        ticks: { color: "#7a8799" },
+        grid: { color: "rgba(255,255,255,0.05)" },
+      },
+      y: {
+        ticks: { color: "#7a8799" },
+        grid: { color: "rgba(255,255,255,0.05)" },
+      },
+    },
+  },
+});
+
+function updateLoss(history) {
+  if (!history || history.length === 0) {
+    lossChart.data.labels = [];
+    lossChart.data.datasets[0].data = [];
+    lossChart.update("none");
+    lossPointsEl.textContent = "0 pts";
+    return;
+  }
+  const labels = history.map((point) => point.iteration);
+  const values = history.map((point) => point.loss);
+  lossChart.data.labels = labels;
+  lossChart.data.datasets[0].data = values;
+  lossChart.update("none");
+  lossPointsEl.textContent = `${history.length} pts`;
+}
+
+function setBadge(state) {
+  badgeEl.textContent = state.label;
+  badgeEl.style.background = state.color;
+}
+
+function toImageSrc(imageB64) {
+  if (!imageB64) return "";
+  // Assume incoming payload omits the prefix; default to PNG.
+  return imageB64.startsWith("data:") ? imageB64 : `data:image/png;base64,${imageB64}`;
+}
+
+function updateTiles(packet) {
+  const tiles = packet.tiles || [];
+  for (let i = 0; i < REQUIRED_TILES; i += 1) {
+    const tile = tiles[i];
+    const img = tileImages[i];
+    const caption = labelTiles[i];
+    if (tile) {
+      img.src = toImageSrc(tile.image_b64);
+      caption.replaceChildren();
+      const predSpan = document.createElement("span");
+      predSpan.className = "pred";
+      predSpan.textContent = `Pred: ${tile.prediction}`;
+      const br = document.createElement("br");
+      const truthSpan = document.createElement("span");
+      truthSpan.className = "truth";
+      truthSpan.textContent = `GT: ${tile.ground_truth}`;
+
+      caption.appendChild(predSpan);
+      caption.appendChild(br);
+      caption.appendChild(truthSpan);
+
+      if (typeof tile.confidence === "number") {
+        const conf = document.createElement("span");
+        conf.className = "confidence";
+        conf.textContent = `conf ${(tile.confidence * 100).toFixed(1)}%`;
+        caption.appendChild(document.createElement("br"));
+        caption.appendChild(conf);
+      }
+    } else {
+      img.src = "";
+      caption.textContent = "Waiting…";
+    }
+  }
+
+  if (packet.tiles_ready) {
+    tileStatusEl.textContent = "ready 16/16";
+    tileStatusEl.style.color = "#4ad7b5";
+  } else {
+    const count = packet.samples_available ?? 0;
+    tileStatusEl.textContent = `aggregating ${count}/16`;
+    tileStatusEl.style.color = "#e6b422";
+  }
+}
+
+let isPaused = false;
+let bufferedPacket = null;
+
+pauseBtn.addEventListener("click", () => {
+  isPaused = true;
+  pauseBtn.disabled = true;
+  resumeBtn.disabled = false;
+});
+
+resumeBtn.addEventListener("click", () => {
+  isPaused = false;
+  pauseBtn.disabled = false;
+  resumeBtn.disabled = true;
+  if (bufferedPacket) {
+    paint(bufferedPacket);
+    bufferedPacket = null;
+  }
+});
+
+function paint(packet) {
+  iterEl.textContent = packet.iteration ?? "-";
+  const loss = typeof packet.loss === "number" ? packet.loss : 0;
+  lossEl.textContent = loss.toFixed(4);
+  batchEl.textContent = packet.batch_size ?? "-";
+  updateTiles(packet);
+  updateLoss(packet.loss_history);
+}
+
+function connectWs() {
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const wsUrl = `${protocol}://${window.location.host}/ws`;
+  const socket = new WebSocket(wsUrl);
+
+  socket.addEventListener("open", () => {
+    setBadge({ label: "Streaming", color: "#4ad7b5" });
+  });
+
+  socket.addEventListener("message", (event) => {
+    const packet = JSON.parse(event.data);
+    if (isPaused) {
+      bufferedPacket = packet;
+      return;
+    }
+    paint(packet);
+  });
+
+  socket.addEventListener("close", () => {
+    setBadge({ label: "Reconnecting…", color: "#e6b422" });
+    setTimeout(connectWs, 1000);
+  });
+
+  socket.addEventListener("error", () => {
+    setBadge({ label: "Error", color: "#f07178" });
+  });
+}
+
+connectWs();
+
+let frames = 0;
+let lastTime = performance.now();
+
+function frameCounter(now) {
+  frames += 1;
+  if (now - lastTime >= 1000) {
+    fpsEl.textContent = frames.toString().padStart(2, "0");
+    frames = 0;
+    lastTime = now;
+  }
+  requestAnimationFrame(frameCounter);
+}
+
+requestAnimationFrame(frameCounter);
