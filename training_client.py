@@ -25,13 +25,10 @@ RPC_URL = os.getenv("DASHBOARD_RPC_URL", "http://127.0.0.1:8000/rpc/batch_update
 GRPC_TARGET = os.getenv("DASHBOARD_GRPC_TARGET", "127.0.0.1:50051")
 RPC_MODE = os.getenv("DASHBOARD_RPC_MODE", "grpc").lower()
 TOTAL_ITERATIONS = int(os.getenv("TOTAL_ITERATIONS", "400"))
-MINI_BATCH_MIN = int(os.getenv("MINI_BATCH_MIN", "6"))
-MINI_BATCH_MAX = int(os.getenv("MINI_BATCH_MAX", "32"))
 DELAY_MS = int(os.getenv("INJECT_DELAY_MS", "0"))
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-3"))
 STREAM_TILE_LIMIT = int(os.getenv("STREAM_TILE_LIMIT", "16"))
-DEFAULT_BATCH_SIZE = max(MINI_BATCH_MIN, MINI_BATCH_MAX)
-TRAIN_BATCH_SIZE = int(os.getenv("TRAIN_BATCH_SIZE", str(DEFAULT_BATCH_SIZE)))
+BATCH_SIZE = 16
 CLASSES = [
     "Bishop",
     "King",
@@ -139,7 +136,7 @@ class SimpleCNN(nn.Module):
 
 class ChessTrainer:
     def __init__(self) -> None:
-        batch_size = max(1, TRAIN_BATCH_SIZE)
+        batch_size = BATCH_SIZE
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.dataset = ChessPieceDataset(DATASET_ROOT, CLASSES)
         self.loader = DataLoader(
@@ -148,7 +145,7 @@ class ChessTrainer:
             shuffle=True,
             collate_fn=collate_batch,
             num_workers=0,
-            drop_last=False,
+            drop_last=True,
         )
         self.iterator = iter(self.loader)
         self.model = SimpleCNN(len(CLASSES)).to(self.device)
