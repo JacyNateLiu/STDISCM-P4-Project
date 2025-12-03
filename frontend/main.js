@@ -1,6 +1,7 @@
 const REQUIRED_TILES = 16;
 const imageGrid = document.getElementById("imageGrid");
-const predictionGrid = document.getElementById("predictionGrid");
+const predictedGrid = document.getElementById("predictedGrid");
+const truthGrid = document.getElementById("truthGrid");
 const lossEl = document.getElementById("loss");
 const iterEl = document.getElementById("iteration");
 const batchEl = document.getElementById("batchSize");
@@ -12,7 +13,8 @@ const pauseBtn = document.getElementById("pauseBtn");
 const resumeBtn = document.getElementById("resumeBtn");
 
 const tileImages = [];
-const labelTiles = [];
+const predictedCells = [];
+const truthCells = [];
 
 function buildTiles() {
   for (let i = 0; i < REQUIRED_TILES; i += 1) {
@@ -25,14 +27,17 @@ function buildTiles() {
     imageGrid.appendChild(imgTile);
     tileImages.push(img);
 
-    const labelTile = document.createElement("div");
-    labelTile.className = "tile";
-    const caption = document.createElement("div");
-    caption.className = "caption";
-    caption.textContent = "Waiting…";
-    labelTile.appendChild(caption);
-    predictionGrid.appendChild(labelTile);
-    labelTiles.push(caption);
+    const predCell = document.createElement("div");
+    predCell.className = "label-cell";
+    predCell.textContent = "Predicted label";
+    predictedGrid.appendChild(predCell);
+    predictedCells.push(predCell);
+
+    const truthCell = document.createElement("div");
+    truthCell.className = "label-cell";
+    truthCell.textContent = "Ground-truth label";
+    truthGrid.appendChild(truthCell);
+    truthCells.push(truthCell);
   }
 }
 
@@ -111,32 +116,26 @@ function updateTiles(packet) {
   for (let i = 0; i < REQUIRED_TILES; i += 1) {
     const tile = tiles[i];
     const img = tileImages[i];
-    const caption = labelTiles[i];
     if (tile) {
       img.src = toImageSrc(tile.image_b64);
-      caption.replaceChildren();
-      const predSpan = document.createElement("span");
-      predSpan.className = "pred";
-      predSpan.textContent = `Pred: ${tile.prediction}`;
-      const br = document.createElement("br");
-      const truthSpan = document.createElement("span");
-      truthSpan.className = "truth";
-      truthSpan.textContent = `GT: ${tile.ground_truth}`;
+      const predCell = predictedCells[i];
+      const truthCell = truthCells[i];
+      const isMatch = tile.prediction === tile.ground_truth;
 
-      caption.appendChild(predSpan);
-      caption.appendChild(br);
-      caption.appendChild(truthSpan);
+      predCell.textContent = tile.prediction ?? "-";
+      truthCell.textContent = tile.ground_truth ?? "-";
 
-      if (typeof tile.confidence === "number") {
-        const conf = document.createElement("span");
-        conf.className = "confidence";
-        conf.textContent = `conf ${(tile.confidence * 100).toFixed(1)}%`;
-        caption.appendChild(document.createElement("br"));
-        caption.appendChild(conf);
-      }
+      predCell.classList.remove("match", "mismatch");
+      truthCell.classList.remove("match", "mismatch");
+      const statusClass = isMatch ? "match" : "mismatch";
+      predCell.classList.add(statusClass);
+      truthCell.classList.add(statusClass);
     } else {
       img.src = "";
-      caption.textContent = "Waiting…";
+      predictedCells[i].textContent = "—";
+      predictedCells[i].classList.remove("match", "mismatch");
+      truthCells[i].textContent = "—";
+      truthCells[i].classList.remove("match", "mismatch");
     }
   }
 

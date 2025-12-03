@@ -43,23 +43,28 @@
       </div>
     </header>
 
-    <main>
-      <section>
-        <h2>Input Batch (16 tiles)</h2>
-        <div id="imageGrid" class="grid"></div>
+    <main class="dashboard-layout">
+      <section class="panel images-panel">
+        <h2>Image tiles</h2>
+        <div id="imageGrid" class="grid grid-images"></div>
       </section>
 
-      <section>
-        <h2>Prediction vs Ground Truth</h2>
-        <div id="predictionGrid" class="grid"></div>
+      <section class="panel labels-panel">
+        <h2>Predicted label</h2>
+        <div id="predictedGrid" class="grid grid-labels"></div>
       </section>
 
-      <section class="chart-section">
+      <section class="panel labels-panel">
+        <h2>Ground-truth label</h2>
+        <div id="truthGrid" class="grid grid-labels"></div>
+      </section>
+
+      <section class="panel chart-section">
         <div class="chart-header">
-          <h2>Training Loss</h2>
+          <h2>Training loss plot</h2>
           <span id="lossPointsCount" class="muted"></span>
         </div>
-        <canvas id="lossChart" height="120"></canvas>
+        <canvas id="lossChart" height="140"></canvas>
       </section>
     </main>
 

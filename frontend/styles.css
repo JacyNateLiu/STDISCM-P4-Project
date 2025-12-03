@@ -84,37 +84,45 @@ header.app-header {
   color: #04070b;
 }
 
-main {
+.dashboard-layout {
   padding: 1.5rem;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
   gap: 1.5rem;
 }
 
-section {
+.panel {
   background: var(--panel);
   border-radius: 1rem;
   padding: 1rem;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
 }
 
-section h2 {
-  margin-top: 0;
-  margin-bottom: 0.75rem;
+.panel h2 {
+  margin: 0 0 0.75rem;
 }
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 0.65rem;
+}
+
+.grid-images {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-auto-rows: 90px;
+}
+
+.grid-labels {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-auto-rows: 60px;
 }
 
 .tile {
-  position: relative;
   background: rgba(255, 255, 255, 0.03);
   border-radius: 0.75rem;
   overflow: hidden;
-  min-height: 110px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -129,31 +137,25 @@ section h2 {
   image-rendering: pixelated;
 }
 
-.tile .caption {
-  padding: 0.75rem;
+.label-cell {
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  font-size: 0.85rem;
-  line-height: 1.4;
-}
-
-.caption .pred {
-  color: var(--accent);
-  font-weight: 700;
-}
-
-.caption .truth {
-  color: var(--danger);
   font-weight: 600;
+  font-size: 0.95rem;
+  min-height: 48px;
 }
 
-.caption .confidence {
-  display: block;
-  color: var(--muted);
-  font-size: 0.75rem;
+.label-cell.match {
+  color: var(--accent);
 }
 
-.chart-section {
-  grid-column: 1 / -1;
+.label-cell.mismatch {
+  color: var(--danger);
 }
 
 .chart-header {
@@ -174,7 +176,15 @@ footer {
 }
 
 @media (max-width: 900px) {
-  .grid {
+  .grid-images,
+  .grid-labels {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 540px) {
+  .grid-images,
+  .grid-labels {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
