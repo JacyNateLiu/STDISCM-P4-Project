@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package dashboard;
+
+message SampleEntry {
+  string sample_id = 1;
+  string image_b64 = 2;
+  string prediction = 3;
+  string ground_truth = 4;
+  double confidence = 5;
+}
+
+message BatchUpdateRequest {
+  int32 iteration = 1;
+  double loss = 2;
+  int32 batch_size = 3;
+  repeated SampleEntry samples = 4;
+  double took_ms = 5;
+  int32 delay_ms = 6;
+}
+
+message BatchUpdateResponse {
+  string status = 1;
+  int32 iteration = 2;
+  double loss = 3;
+  bool tiles_ready = 4;
+  int32 samples_available = 5;
+}
+
+service TrainingDashboard {
+  rpc BatchUpdate (BatchUpdateRequest) returns (BatchUpdateResponse);
+}

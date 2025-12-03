@@ -1,8 +1,39 @@
 # How to Run
-1) python -m pip install -r server/requirements.txt
-2) uvicorn dashboard.server.app:app --reload --port 8000
-3) Open http://127.0.0.1:8000 in your browser
-4) From a second terminal in the same folder run python training_client.py
+All commands below assume your terminal is opened in this folder (the project root).
+
+1) (Recommended) Use Python 3.12 and create/activate a virtual environment:
+
+   ```powershell
+   py -3.12 -m venv .winvenv
+   .\.winvenv\Scripts\Activate.ps1
+   ```
+
+2) Install dependencies:
+
+   ```powershell
+   cd dashboard
+   python -m pip install -r server/requirements.txt
+   ```
+
+3) Start the FastAPI + gRPC server (leave it running):
+
+   ```powershell
+   python -m uvicorn server.app:app --reload --host 0.0.0.0 --port 8000
+   ```
+
+4) Open the dashboard UI in a browser:
+
+   ```text
+   http://127.0.0.1:8000
+   ```
+
+5) In a **second** terminal, activate the same virtual environment and run the synthetic trainer (streams over gRPC by default):
+
+   ```powershell
+   .\.winvenv\Scripts\Activate.ps1
+   cd dashboard
+   python training_client.py
+   ```
 
 # Training Dashboard
 
@@ -19,13 +50,14 @@ This project provides a lightweight real-time dashboard for visualizing convolut
 ## Architecture Overview
 
 ```
-training_client.py  -->  POST /rpc/batch_update  -->  FastAPI server  -->  WebSocket broadcast  -->  frontend/main.js
+training_client.py  --gRPC-->  dashboard server (FastAPI + gRPC)  -->  WebSocket broadcast  -->  frontend/main.js
+                               \--HTTP fallback--> /rpc/batch_update (optional)
 ```
 
-1. **RPC ingestion (HTTP POST)**
-   - Pydantic schema enforces payload correctness (iteration, loss, latency metadata, and up to 64 sample entries).
-   - The server optionally waits for `FRAME_DELAY_MS` to simulate slow frames.
-   - After validation, the data is merged into the rolling dashboard state.
+1. **RPC ingestion (gRPC + HTTP fallback)**
+   - The training client now dials the asynchronous gRPC endpoint exposed on `DASHBOARD_GRPC_ADDRESS` (default `0.0.0.0:50051`).
+   - The legacy HTTP JSON endpoint at `/rpc/batch_update` remains available for compatibility with older producers or simple curl tests.
+   - Both transports share the same Pydantic validation layer before mutating the dashboard state.
 
 2. **Dashboard state manager**
    - Maintains the latest 16-tile snapshot, accumulated loss history, and most recent iteration metadata in a thread-safe structure.
@@ -52,11 +84,16 @@ See the Usage section below for setup instructions once the implementation is co
 
 3. Start the dashboard (serves both the API and the static UI):
 
-    ```powershell
-    uvicorn dashboard.server.app:app --reload --port 8000
-    ```
+   ```powershell
+   python -m uvicorn server.app:app --reload --port 8000
+   ```
 
 4. Open `http://127.0.0.1:8000` in a browser to view the dashboard. All static assets live under `/dashboard/*`, and the WebSocket stream is exposed at `/ws`.
+
+The FastAPI process automatically spins up a sibling gRPC server. Tweak its behavior with:
+
+- `DASHBOARD_GRPC_ADDRESS` – host:port binding for the ingestion server (`0.0.0.0:50051` by default).
+- `DASHBOARD_GRPC_MAX_MESSAGE` – maximum message size in bytes (defaults to 32 MiB) if you need to push larger batches.
 
 ### Environment Toggles
 
@@ -110,6 +147,8 @@ python training_client.py
 
 Key environment variables:
 
+- `DASHBOARD_RPC_MODE` — `grpc` (default) or `http`. The HTTP option reuses the historical JSON endpoint if you need to interop with proxies.
+- `DASHBOARD_GRPC_TARGET` — Override the gRPC host:port (`127.0.0.1:50051` by default) if the trainer runs remotely.
 - `DASHBOARD_RPC_URL` &mdash; Override the default `http://127.0.0.1:8000/rpc/batch_update` target.
 - `TOTAL_ITERATIONS` &mdash; Total number of simulated updates (default 400).
 - `MINI_BATCH_MIN` / `MINI_BATCH_MAX` &mdash; Control the random mini-batch sizes to validate the aggregation logic.

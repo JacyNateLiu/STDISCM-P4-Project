@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import logging
+
+import grpc
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .broadcast import BroadcastHub
+from .grpc_service import grpc_server_address, start_grpc_server, stop_grpc_server
 from .schemas import BatchUpdateRequest
 from .state import DashboardState, maybe_delay
 
@@ -26,6 +30,7 @@ app.add_middleware(
 
 state = DashboardState()
 hub = BroadcastHub()
+grpc_server: grpc.Server | None = None
 
 app.mount("/dashboard", StaticFiles(directory=FRONTEND_DIR, html=True), name="static")
 
@@ -65,3 +70,21 @@ async def websocket_stream(websocket: WebSocket) -> None:
         pass
     finally:
         await hub.unregister(client_id)
+
+
+@app.on_event("startup")
+async def _start_grpc_server() -> None:
+    global grpc_server
+    if grpc_server is None:
+        grpc_server = await start_grpc_server(state, hub)
+        logging.getLogger(__name__).info(
+            "gRPC ingestion server listening on %s", grpc_server_address()
+        )
+
+
+@app.on_event("shutdown")
+async def _stop_grpc_server() -> None:
+    global grpc_server
+    if grpc_server is not None:
+        await stop_grpc_server(grpc_server)
+        grpc_server = None
