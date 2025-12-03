@@ -11,7 +11,6 @@ All commands below assume your terminal is opened in this folder (the project ro
 2) Install dependencies:
 
    ```powershell
-   cd dashboard
    python -m pip install -r server/requirements.txt
    ```
 
@@ -38,7 +37,6 @@ All commands below assume your terminal is opened in this folder (the project ro
 
    ```powershell
    .\.winvenv\Scripts\Activate.ps1
-   cd dashboard
    python training_client.py
    ```
 
