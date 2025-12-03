@@ -44,6 +44,10 @@ function buildTiles() {
 buildTiles();
 
 const ctx = document.getElementById("lossChart").getContext("2d");
+const lossGradient = ctx.createLinearGradient(0, 0, 0, 280);
+lossGradient.addColorStop(0, "rgba(81, 244, 211, 0.35)");
+lossGradient.addColorStop(1, "rgba(81, 244, 211, 0)");
+
 const lossChart = new Chart(ctx, {
   type: "line",
   data: {
@@ -52,7 +56,9 @@ const lossChart = new Chart(ctx, {
       {
         label: "Loss",
         data: [],
-        borderColor: "#4ad7b5",
+        borderColor: "#51f4d3",
+        backgroundColor: lossGradient,
+        fill: true,
         tension: 0.2,
         pointRadius: 0,
         borderWidth: 2,
@@ -66,6 +72,9 @@ const lossChart = new Chart(ctx, {
       legend: { display: false },
       tooltip: {
         enabled: true,
+        backgroundColor: "rgba(5, 5, 15, 0.9)",
+        titleColor: "#f2ecff",
+        bodyColor: "#f2ecff",
         callbacks: {
           label: (context) => `Loss: ${context.parsed.y.toFixed(4)}`,
         },
@@ -73,12 +82,12 @@ const lossChart = new Chart(ctx, {
     },
     scales: {
       x: {
-        ticks: { color: "#7a8799" },
-        grid: { color: "rgba(255,255,255,0.05)" },
+        ticks: { color: "rgba(244, 236, 255, 0.6)" },
+        grid: { color: "rgba(255, 255, 255, 0.03)" },
       },
       y: {
-        ticks: { color: "#7a8799" },
-        grid: { color: "rgba(255,255,255,0.05)" },
+        ticks: { color: "rgba(244, 236, 255, 0.6)" },
+        grid: { color: "rgba(255, 255, 255, 0.03)" },
       },
     },
   },
@@ -103,6 +112,7 @@ function updateLoss(history) {
 function setBadge(state) {
   badgeEl.textContent = state.label;
   badgeEl.style.background = state.color;
+  badgeEl.classList.toggle("badge-pulse", Boolean(state.pulsing));
 }
 
 function toImageSrc(imageB64) {
@@ -196,7 +206,7 @@ function connectWs() {
   });
 
   socket.addEventListener("close", () => {
-    setBadge({ label: "Reconnecting…", color: "#e6b422" });
+    setBadge({ label: "Reconnecting…", color: "#e6b422", pulsing: true });
     setTimeout(connectWs, 1000);
   });
 
@@ -207,16 +217,16 @@ function connectWs() {
 
 connectWs();
 
-let frames = 0;
-let lastTime = performance.now();
+let lastFrameTime = performance.now();
 
 function frameCounter(now) {
-  frames += 1;
-  if (now - lastTime >= 1000) {
-    fpsEl.textContent = frames.toString().padStart(2, "0");
-    frames = 0;
-    lastTime = now;
+  const deltaMs = now - lastFrameTime;
+  if (deltaMs > 0) {
+    const rawFps = 1000 / deltaMs;
+    const cappedFps = Math.min(Math.round(rawFps), 60);
+    fpsEl.textContent = cappedFps.toString().padStart(2, "0");
   }
+  lastFrameTime = now;
   requestAnimationFrame(frameCounter);
 }
 
