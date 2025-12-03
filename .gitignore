@@ -9,9 +9,11 @@ __pycache__/
 .venv/
 venv/
 .env/
+.winvenv/
 
 # IDE/editor settings
 .vscode/
+.vs/
 .idea/
 *.code-workspace
 
