@@ -218,17 +218,35 @@ function connectWs() {
 
 connectWs();
 
+const FPS_UPDATE_INTERVAL_MS = 100;
 let lastFrameTime = performance.now();
+let fpsAccumulatedMs = 0;
+let fpsFrameCount = 0;
+let lastFpsUpdateTime = performance.now();
+
+function renderFps(rawFps) {
+  const cappedFps = Math.min(Math.round(rawFps), 60);
+  const formatted = cappedFps.toString().padStart(2, "0");
+  fpsEl.textContent = formatted;
+  if (fpsOverlayEl) {
+    fpsOverlayEl.textContent = formatted;
+  }
+}
 
 function frameCounter(now) {
   const deltaMs = now - lastFrameTime;
   if (deltaMs > 0) {
-    const rawFps = 1000 / deltaMs;
-    const cappedFps = Math.min(Math.round(rawFps), 60);
-    const formatted = cappedFps.toString().padStart(2, "0");
-    fpsEl.textContent = formatted;
-    if (fpsOverlayEl) {
-      fpsOverlayEl.textContent = formatted;
+    fpsAccumulatedMs += deltaMs;
+    fpsFrameCount += 1;
+    if (now - lastFpsUpdateTime >= FPS_UPDATE_INTERVAL_MS && fpsFrameCount > 0) {
+      const avgFrameMs = fpsAccumulatedMs / fpsFrameCount;
+      if (avgFrameMs > 0) {
+        const rawFps = 1000 / avgFrameMs;
+        renderFps(rawFps);
+      }
+      fpsAccumulatedMs = 0;
+      fpsFrameCount = 0;
+      lastFpsUpdateTime = now;
     }
   }
   lastFrameTime = now;
