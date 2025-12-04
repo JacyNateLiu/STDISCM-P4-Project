@@ -25,7 +25,7 @@ TOTAL_ITERATIONS = int(os.getenv("TOTAL_ITERATIONS", "400"))
 DELAY_MS = int(os.getenv("INJECT_DELAY_MS", "0"))
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-3"))
 STREAM_TILE_LIMIT = int(os.getenv("STREAM_TILE_LIMIT", "16"))
-MAX_RPC_RETRIES = int(os.getenv("RPC_MAX_RETRIES", "5"))
+MAX_RPC_RETRIES = int(os.getenv("RPC_MAX_RETRIES", "5")) or None
 BACKOFF_BASE_SECONDS = float(os.getenv("RPC_BACKOFF_BASE", "0.5"))
 BACKOFF_MAX_SECONDS = float(os.getenv("RPC_BACKOFF_MAX", "5.0"))
 BATCH_SIZE = 16
@@ -255,6 +255,7 @@ async def stream_batches() -> None:
 async def send_with_retry(request, stub, channel):
     attempt = 0
     delay = BACKOFF_BASE_SECONDS
+    max_retries = MAX_RPC_RETRIES
     while True:
         attempt += 1
         try:
@@ -266,14 +267,18 @@ async def send_with_retry(request, stub, channel):
         except Exception as exc:  # pragma: no cover - defensive
             error_message = f"unexpected error: {exc}"
 
-        if attempt >= MAX_RPC_RETRIES:
+        if max_retries is not None and attempt >= max_retries:
             raise RuntimeError(
                 f"Exhausted retries sending iteration {request.iteration}: {error_message}"
             )
 
+        attempt_label = f"attempt {attempt}"
+        if max_retries is not None:
+            attempt_label += f"/{max_retries}"
+
         print(
             "Retrying iteration "
-            f"{request.iteration} (attempt {attempt}/{MAX_RPC_RETRIES}) after error: "
+            f"{request.iteration} ({attempt_label}) after error: "
             f"{error_message}"
         )
 

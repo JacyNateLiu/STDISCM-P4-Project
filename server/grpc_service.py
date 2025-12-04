@@ -105,7 +105,15 @@ async def start_grpc_server(state: DashboardState, hub: BroadcastHub) -> grpc.Se
 
 async def stop_grpc_server(server: grpc.Server) -> None:
     stop_future = server.stop(0)
-    await asyncio.to_thread(stop_future.result)
+    if hasattr(stop_future, "result"):
+        await asyncio.to_thread(stop_future.result)
+    elif hasattr(stop_future, "wait"):
+        await asyncio.to_thread(stop_future.wait)
+    elif hasattr(stop_future, "__await__"):
+        await stop_future  # type: ignore[func-returns-value]
+    else:
+        # Nothing to wait on; server is already stopped.
+        await asyncio.sleep(0)
 
 
 def grpc_server_address() -> str:

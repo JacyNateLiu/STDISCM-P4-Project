@@ -26,7 +26,7 @@ class BroadcastHub:
         async with self._lock:
             websocket = self._connections.pop(client_id, None)
         if websocket:
-            await websocket.close()
+            await self._safe_close(websocket)
 
     async def broadcast(self, message: str) -> None:
         async with self._lock:
