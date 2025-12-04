@@ -7,6 +7,7 @@ const iterEl = document.getElementById("iteration");
 const batchEl = document.getElementById("batchSize");
 const tileStatusEl = document.getElementById("tileStatus");
 const fpsEl = document.getElementById("fpsCounter");
+const fpsOverlayEl = document.getElementById("fpsOverlay");
 const badgeEl = document.getElementById("connectionBadge");
 const lossPointsEl = document.getElementById("lossPointsCount");
 const pauseBtn = document.getElementById("pauseBtn");
@@ -224,7 +225,11 @@ function frameCounter(now) {
   if (deltaMs > 0) {
     const rawFps = 1000 / deltaMs;
     const cappedFps = Math.min(Math.round(rawFps), 60);
-    fpsEl.textContent = cappedFps.toString().padStart(2, "0");
+    const formatted = cappedFps.toString().padStart(2, "0");
+    fpsEl.textContent = formatted;
+    if (fpsOverlayEl) {
+      fpsOverlayEl.textContent = formatted;
+    }
   }
   lastFrameTime = now;
   requestAnimationFrame(frameCounter);

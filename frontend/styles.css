@@ -105,6 +105,37 @@ header.app-header > * {
   color: #04070b;
 }
 
+.floating-fps {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 72px;
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(5, 5, 15, 0.8);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  z-index: 1000;
+  text-align: center;
+}
+
+.floating-fps .label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+#fpsOverlay {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
 .dashboard-layout {
   padding: 1.5rem;
   max-width: 1200px;
