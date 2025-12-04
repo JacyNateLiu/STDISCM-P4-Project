@@ -25,6 +25,9 @@ TOTAL_ITERATIONS = int(os.getenv("TOTAL_ITERATIONS", "400"))
 DELAY_MS = int(os.getenv("INJECT_DELAY_MS", "0"))
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-3"))
 STREAM_TILE_LIMIT = int(os.getenv("STREAM_TILE_LIMIT", "16"))
+MAX_RPC_RETRIES = int(os.getenv("RPC_MAX_RETRIES", "5"))
+BACKOFF_BASE_SECONDS = float(os.getenv("RPC_BACKOFF_BASE", "0.5"))
+BACKOFF_MAX_SECONDS = float(os.getenv("RPC_BACKOFF_MAX", "5.0"))
 BATCH_SIZE = 16
 CLASSES = [
     "Bishop",
@@ -211,9 +214,14 @@ async def generate_batches():
 
 
 async def stream_batches() -> None:
-    async with grpc.aio.insecure_channel(GRPC_TARGET) as channel:
-        stub = dashboard_pb2_grpc.TrainingDashboardStub(channel)
+    channel = grpc.aio.insecure_channel(GRPC_TARGET)
+    stub = dashboard_pb2_grpc.TrainingDashboardStub(channel)
+    last_acked_iteration = 0
+    try:
         async for iteration, batch_size, loss_value, samples in generate_batches():
+            if iteration <= last_acked_iteration:
+                continue
+
             request = dashboard_pb2.BatchUpdateRequest(
                 iteration=iteration,
                 loss=loss_value,
@@ -230,18 +238,56 @@ async def stream_batches() -> None:
                 ],
                 delay_ms=DELAY_MS,
             )
-            try:
-                response = await stub.BatchUpdate(request)
-            except grpc.aio.AioRpcError as exc:
-                details = exc.details() or "unknown"
-                print(
-                    f"gRPC error {exc.code().name}: {details}"
-                )
-                raise
+
+            response, stub, channel = await send_with_retry(
+                request, stub, channel
+            )
+            last_acked_iteration = max(last_acked_iteration, response.iteration)
+
             print(
                 f"iter={iteration:04d} batch={batch_size:02d} "
                 f"loss={loss_value:.4f} tilesReady={response.tiles_ready}"
             )
+    finally:
+        await channel.close()
+
+
+async def send_with_retry(request, stub, channel):
+    attempt = 0
+    delay = BACKOFF_BASE_SECONDS
+    while True:
+        attempt += 1
+        try:
+            response = await stub.BatchUpdate(request)
+            return response, stub, channel
+        except grpc.aio.AioRpcError as exc:
+            error_details = exc.details() or "unknown"
+            error_message = f"{exc.code().name}: {error_details}"
+        except Exception as exc:  # pragma: no cover - defensive
+            error_message = f"unexpected error: {exc}"
+
+        if attempt >= MAX_RPC_RETRIES:
+            raise RuntimeError(
+                f"Exhausted retries sending iteration {request.iteration}: {error_message}"
+            )
+
+        print(
+            "Retrying iteration "
+            f"{request.iteration} (attempt {attempt}/{MAX_RPC_RETRIES}) after error: "
+            f"{error_message}"
+        )
+
+        try:
+            await channel.close()
+        except Exception:
+            pass
+
+        jitter = delay * 0.2
+        await asyncio.sleep(delay + random.uniform(0, jitter))
+        delay = min(delay * 2, BACKOFF_MAX_SECONDS)
+
+        channel = grpc.aio.insecure_channel(GRPC_TARGET)
+        stub = dashboard_pb2_grpc.TrainingDashboardStub(channel)
 
 
 if __name__ == "__main__":
