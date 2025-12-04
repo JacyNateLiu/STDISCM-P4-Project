@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Sequence
 
-import httpx
 import grpc
 import numpy as np
 from PIL import Image, ImageOps
@@ -21,9 +20,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from server.proto import dashboard_pb2, dashboard_pb2_grpc
 
-RPC_URL = os.getenv("DASHBOARD_RPC_URL", "http://127.0.0.1:8000/rpc/batch_update")
 GRPC_TARGET = os.getenv("DASHBOARD_GRPC_TARGET", "127.0.0.1:50051")
-RPC_MODE = os.getenv("DASHBOARD_RPC_MODE", "grpc").lower()
 TOTAL_ITERATIONS = int(os.getenv("TOTAL_ITERATIONS", "400"))
 DELAY_MS = int(os.getenv("INJECT_DELAY_MS", "0"))
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-3"))
@@ -213,42 +210,7 @@ async def generate_batches():
         await asyncio.sleep(0)
 
 
-async def stream_batches_http() -> None:
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        async for iteration, batch_size, loss_value, samples in generate_batches():
-            payload = {
-                "iteration": iteration,
-                "loss": loss_value,
-                "batch_size": batch_size,
-                "samples": [
-                    {
-                        "sample_id": f"{iteration}-{idx}",
-                        "prediction": sample.prediction,
-                        "ground_truth": sample.ground_truth,
-                        "confidence": sample.confidence,
-                        "image_b64": sample.image_b64,
-                    }
-                    for idx, sample in enumerate(samples)
-                ],
-                "delay_ms": DELAY_MS,
-            }
-            response = await client.post(RPC_URL, json=payload)
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                body = exc.response.text
-                print(
-                    f"Server returned {exc.response.status_code}: {body[:400]}"
-                )
-                raise
-            status = response.json()
-            print(
-                f"iter={iteration:04d} batch={batch_size:02d} "
-                f"loss={loss_value:.4f} tilesReady={status.get('tilesReady')}"
-            )
-
-
-async def stream_batches_grpc() -> None:
+async def stream_batches() -> None:
     async with grpc.aio.insecure_channel(GRPC_TARGET) as channel:
         stub = dashboard_pb2_grpc.TrainingDashboardStub(channel)
         async for iteration, batch_size, loss_value, samples in generate_batches():
@@ -280,13 +242,6 @@ async def stream_batches_grpc() -> None:
                 f"iter={iteration:04d} batch={batch_size:02d} "
                 f"loss={loss_value:.4f} tilesReady={response.tiles_ready}"
             )
-
-
-async def stream_batches() -> None:
-    if RPC_MODE == "http":
-        await stream_batches_http()
-    else:
-        await stream_batches_grpc()
 
 
 if __name__ == "__main__":

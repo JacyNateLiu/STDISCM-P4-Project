@@ -33,25 +33,22 @@ All commands below assume your terminal is opened in this folder (the project ro
    http://127.0.0.1:8000
    ```
 
-5) In a **second** terminal, activate the same virtual environment and run the trainer (it now trains a small CNN over the bundled chess dataset and streams real losses/predictions over gRPC by default):
+5) In a **second** terminal, activate the same virtual environment and run the trainer (it now trains a small CNN over the bundled chess dataset and streams real losses/predictions over gRPC only):
 
    ```powershell
    .\.winvenv\Scripts\Activate.ps1
    python training_client.py
    ```
 
+   The HTTP ingestion endpoint has been removed to avoid redundancy, so the trainer exclusively targets the gRPC server (`DASHBOARD_GRPC_TARGET` controls the host/port if you need to customize it).
+
 The trainer now learns directly from the chess-piece tiles under `assets/` (already included in this repo). You can drop additional PNG/JPG samples into `assets/<PieceName>/` to customize the dataset.
 
-## Trainer knobs
+## Debug / Fault-Tolerance Smoke Test
 
-The following environment variables let you tweak the local training loop:
+Use `debug_state.py` to reproduce the concurrency and retry guarantees without spinning up the whole stack. From the project root, run:
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `TRAIN_BATCH_SIZE` | `32` | Batch size used by the CNN. |
-| `TOTAL_ITERATIONS` | `400` | Number of gradient steps / dashboard updates. |
-| `LEARNING_RATE` | `1e-3` | Adam optimizer learning rate. |
-| `STREAM_TILE_LIMIT` | `16` | Max number of sample tiles sent to the dashboard each update. |
-| `DASHBOARD_RPC_MODE` | `grpc` | Switch to `http` to hit `/rpc/batch_update` instead. |
-
-Loss curves now reflect the true optimization progress of the CNN rather than scripted values.
+```powershell
+.\.winvenv\Scripts\Activate.ps1
+python debug_state.py
+```

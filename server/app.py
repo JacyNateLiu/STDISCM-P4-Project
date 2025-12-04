@@ -12,8 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .broadcast import BroadcastHub
 from .grpc_service import grpc_server_address, start_grpc_server, stop_grpc_server
-from .schemas import BatchUpdateRequest
-from .state import DashboardState, maybe_delay
+from .state import DashboardState
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = BASE_DIR / "frontend"
@@ -43,19 +42,6 @@ async def healthcheck() -> dict[str, str]:
 @app.get("/")
 async def root_redirect() -> RedirectResponse:
     return RedirectResponse(url="/dashboard/")
-
-
-@app.post("/rpc/batch_update")
-async def batch_update(payload: BatchUpdateRequest) -> dict[str, object]:
-    await maybe_delay(payload.delay_ms)
-    packet = await state.ingest(payload)
-    await hub.broadcast(packet.json())
-    return {
-        "status": "ok",
-        "tilesReady": packet.tiles_ready,
-        "loss": packet.loss,
-        "iteration": packet.iteration,
-    }
 
 
 @app.websocket("/ws")
